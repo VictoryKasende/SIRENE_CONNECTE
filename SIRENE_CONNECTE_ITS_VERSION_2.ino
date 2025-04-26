@@ -2,11 +2,12 @@
 #include <SPI.h>
 #include "RTClib.h"
 
-#define choice_button 12
-#define button_increment 13
-#define button_desincrement 14
-#define relais_sirene 27
-
+#define choice_button 34
+#define button_increment 35
+#define button_desincrement 4
+#define relais_sirene 26
+#define buzzer 27
+#define led_tft 0
 
 TFT_eSPI tft = TFT_eSPI();
 RTC_DS3231 rtc;
@@ -22,12 +23,37 @@ static String previousDate = "";
 static float prevTemp = 0.0;
 int heure = 0, minute = 0, sec = 0;
 
+struct HoraireCours {
+  int heure;
+  int minute;
+  const char* message;
+};
+
+HoraireCours horaires[] = {
+  {5, 0, "LEVEE DU SOMEIL"},
+  {7, 30, "MOT DU MATIN"},
+  {7, 40, "DEBUT DU COURS"},
+  {8, 35, "DEUXIEME HEURE"},
+  {9, 25, "TROISIEME HEURE"},
+  {10, 15, "QUATRIEME HEURE"},
+  {11, 5, "DEBUT DE LA PAUSE"},
+  {11, 20, "FIN DE LA PAUSE"},
+  {12, 5, "CINQUIEME HEURE"},
+  {12, 50, "SIXIEME HEURE"},
+  {13, 35, "FIN DE COURS"},
+  {17, 0, "DEBUT GRANDE ETUDE"},
+  {20, 0, "ETUDE VESPERALE"},
+};
+
 void setup() {
   setup_TFT();
-  pinMode(choice_button, INPUT_PULLUP);
-  pinMode(button_increment, INPUT_PULLUP);
+  pinMode(choice_button, INPUT);
+  pinMode(button_increment, INPUT);
   pinMode(button_desincrement, INPUT_PULLUP);
   pinMode(relais_sirene, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+  pinMode(led_tft, OUTPUT);
+  digitalWrite(led_tft, HIGH);
   if (!rtc.begin()) {
     Serial.println("Impossible de trouver RTC");
     Serial.flush();
@@ -37,6 +63,7 @@ void setup() {
 
 void setup_TFT() {
   tft.init();
+  Serial.print("=========Ecran===========");
   tft.setRotation(1);  // Paysage
   tft.fillScreen(TFT_WHITE);
 
@@ -52,18 +79,6 @@ void setup_TFT() {
   // --- Ligne après le titre ---
   tft.drawFastHLine(0, 45, tft.width(), TFT_BLUE);
 
-  // --- Jour centré ---
-  /* String day = "Saturday";
-  int16_t dayX = (tft.width() - tft.textWidth(day)) / 2;
-  tft.setCursor(dayX, 60);
-  tft.print(day); */
-
-  // --- Date centrée ---
-  /* String date = "01-01-2020";
-  int16_t dateX = (tft.width() - tft.textWidth(date)) / 2;
-  tft.setCursor(dateX, 100);
-  tft.print(date); */
-
   // --- Ligne après la date ---
   tft.drawFastHLine(0, 140, tft.width(), TFT_BLUE);
 
@@ -73,12 +88,6 @@ void setup_TFT() {
   tft.setCursor(heureLabelX, 150);
   tft.print(heureLabel);
 
-  // --- Heure centrée ---
-  /* String heure = "01:01:40";
-  int16_t heureX = (tft.width() - tft.textWidth(heure)) / 2;
-  tft.setCursor(heureX, 190);
-  tft.print(heure); */
-
   // --- Ligne après l’heure ---
   tft.drawFastHLine(0, 230, tft.width(), TFT_BLUE);
 
@@ -87,11 +96,6 @@ void setup_TFT() {
   int16_t tempLabelX = (tft.width() - tft.textWidth(tempLabel)) / 2;
   tft.setCursor(tempLabelX, 240);
   tft.print(tempLabel);
-
-  /* String temp = "26.25*C";
-  int16_t tempX = (tft.width() - tft.textWidth(temp)) / 2;
-  tft.setCursor(tempX, 280);
-  tft.print(temp); */
 }
 
 void loop() {
@@ -99,9 +103,9 @@ void loop() {
   heure = now.hour();
   minute = now.minute();
   sec = now.second();
-
+  
   reglageManuelle();
-  handleClassSchedule(heure, minute, sec);
+  handleClassSchedule(heure, minute, sec, now.dayOfTheWeek());
 
   // Fonctions d'affichage
   displayDate(now);
@@ -110,57 +114,30 @@ void loop() {
   displayTemperature();
 }
 
-void handleClassSchedule(int heure, int minute, int sec) {
-  if (heure == 7 && minute == 20 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("DEBUT DE COURS");
-    resetPreviousValues();
-  } else if (heure == 7 && minute == 25 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("PREMIERE HEURE");
-    resetPreviousValues();
-  } else if (heure == 8 && minute == 25 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("DEUXIEME HEURE");
-    resetPreviousValues();
-  } else if (heure == 9 && minute == 10 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("TROISIEME HEURE");
-    resetPreviousValues();
-  } else if (heure == 10 && minute == 0 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("QUATRIEME HEURE");
-    resetPreviousValues();
-  } else if (heure == 10 && minute == 50 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("PREMIERE PAUSE");
-    resetPreviousValues();
-  } else if (heure == 11 && minute == 10 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("CINQUIEME HEURE");
-    resetPreviousValues();
-  } else if (heure == 12 && minute == 0 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("SIXIEME HEURE");
-    resetPreviousValues();
-  } else if (heure == 12 && minute == 50 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("DEUXIEME PAUSE");
-    resetPreviousValues();
-  } else if (heure == 13 && minute == 0 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("SEPTIEME HEURE");
-    resetPreviousValues();
-  } else if (heure == 13 && minute == 40 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("HUITIEME HEURE");
-    resetPreviousValues();
-  } else if (heure == 14 && minute == 20 && sec <= 10) {
-    digitalWrite(relais_sirene, HIGH);
-    clignoterEcran("FIN DE COURS");
-    resetPreviousValues();
-  } else {
+void handleClassSchedule(int heure, int minute, int sec, int dayOfWeek) {
+  bool evenementDeclenche = false;
+
+  // Ne rien faire si c’est dimanche (0)
+  if (dayOfWeek == 0) {
     digitalWrite(relais_sirene, LOW);
+    digitalWrite(buzzer, LOW);
+    return;
+  }
+
+  for (int i = 0; i < sizeof(horaires) / sizeof(HoraireCours); i++) {
+    if (heure == horaires[i].heure && minute == horaires[i].minute && sec <= 15) {
+      digitalWrite(relais_sirene, HIGH);
+      digitalWrite(buzzer, HIGH);
+      clignoterEcran(horaires[i].message);
+      resetPreviousValues();
+      evenementDeclenche = true;
+      break;
+    }
+  }
+
+  if (!evenementDeclenche) {
+    digitalWrite(relais_sirene, LOW);
+    digitalWrite(buzzer, LOW);
   }
 }
 
@@ -177,7 +154,7 @@ void clignoterEcran(String message) {
   unsigned long startMillis = millis();
   unsigned long currentMillis = millis();
 
-  tft.setTextSize(4);  // Taille du texte à 4
+  tft.setTextSize(4);  
 
   // Calculer la largeur du texte
   int16_t textWidth = tft.textWidth(message);
@@ -223,11 +200,11 @@ byte edit(int parameter, int x, int y) {
   char text[3];
   sprintf(text, "%02u", parameter);
 
-  tft.setTextSize(4);  // Taille du texte à 4
-  tft.setTextColor(TFT_BROWN, TFT_WHITE);  // Couleur du texte avec fond blanc
+  tft.setTextSize(4);  
+  tft.setTextColor(TFT_BROWN, TFT_WHITE);  
 
   while (debounce(choice_button))
-    ;  // Attendre que B1 soit relâché
+    ;  
 
   while (true) {
     while (!digitalRead(button_increment)) {  // Tant que B2 est appuyé
@@ -258,7 +235,7 @@ byte edit(int parameter, int x, int y) {
       delay(200);
     }
 
-    tft.fillRect(x, y, 50, 30, TFT_WHITE);  // Effacer le texte précédent (ajuster la taille si nécessaire)
+    tft.fillRect(x, y, 50, 30, TFT_WHITE);  // Effacer le texte précédent 
     unsigned long previous_m = millis();
     while ((millis() - previous_m < 250) && digitalRead(choice_button) && digitalRead(button_increment) && digitalRead(button_desincrement))
       ;
@@ -298,8 +275,8 @@ void reglageManuelle() {
 
 
 void displayDayOfWeek(DateTime now) {
-  String currentDay = daysOfTheWeek[now.dayOfTheWeek()];  // Jour actuel
-
+  String currentDay = daysOfTheWeek[now.dayOfTheWeek()];  
+  
   // Calcul de la position horizontale pour centrer le texte
   int16_t dayX = (tft.width() - tft.textWidth(currentDay)) / 2;
   int16_t y = 60;  // Position verticale du jour de la semaine
@@ -357,10 +334,10 @@ void displayTime(DateTime now) {
 
   // Paramètres d'affichage
   tft.setTextColor(TFT_BROWN);
-  tft.setTextSize(4);  // Confirmé
+  tft.setTextSize(4);  
 
   // Largeur estimée d’un caractère avec setTextSize(4)
-  int charWidth = 24;  // Taille plus grande que TextSize(3)
+  int charWidth = 24;  
 
   // Position de départ centrée pour "HH:MM:SS"
   int totalWidth = 8 * charWidth;
@@ -370,7 +347,7 @@ void displayTime(DateTime now) {
   // Affichage heure
   if (currentHour != prevHour) {
     sprintf(_buffer, "%02u:", currentHour);
-    tft.fillRect(startX, y, charWidth * 3, 36, TFT_WHITE);  // Hauteur ajustée pour TextSize(4)
+    tft.fillRect(startX, y, charWidth * 3, 36, TFT_WHITE);  
     tft.setCursor(startX, y);
     tft.print(_buffer);
     prevHour = currentHour;
@@ -412,7 +389,7 @@ void displayTemperature() {
 
     // Calcul de la largeur totale : texte + espace + cercle + "C"
     int temp_width = tft.textWidth(temp_string);
-    int total_width = temp_width + 12 + tft.textWidth("C");  // cercle et espace après
+    int total_width = temp_width + 12 + tft.textWidth("C");  
 
     // Point de départ pour centrer tout
     int16_t startX = (tft.width() - total_width) / 2;
@@ -430,7 +407,6 @@ void displayTemperature() {
     tft.setCursor(circleX + 8, y);
     tft.print("C");
 
-    // Màj de la valeur précédente
     prevTemp = temp_float;
   }
 }
